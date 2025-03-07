@@ -28,24 +28,24 @@ export default {
     }
   },
   methods: {
-    addTask(title) {
-      console.log(title);
+    async addTask(title) {
       let taskToAdd = {
         title: title,
         is_done: false
       }
-      let newTask = addTaskApi(taskToAdd)
-      console.log(newTask)
+      let newTask = await addTaskApi(taskToAdd)
       this.tasks.push(newTask)
     },
     deleteTask(taskToDelete) {
       console.log(taskToDelete);
-      deleteTaskApi(taskToDelete.id)
+      deleteTaskApi(taskToDelete)
       this.tasks = this.tasks.filter(task => task.id !== taskToDelete.id);
     },
     saveTask(taskToChange) {
       console.log(taskToChange);
-      this.tasks[taskToChange.id] = taskToChange
+      let task = this.tasks.find((task) => task.id === taskToChange.id)
+      let index = this.tasks.indexOf(task[0])
+      this.tasks[index] = taskToChange
       editTaskApi(taskToChange)
       this.closeEditor()
     },
@@ -53,6 +53,14 @@ export default {
       this.isEditorVisible = true;
       this.editingTask = task;
     },
+
+    setDone(taskToChange) {
+      let task = this.tasks.find((task) => task.id === taskToChange.id)
+      let index = this.tasks.indexOf(task[0])
+      this.tasks[index] = taskToChange
+      editTaskApi(taskToChange)
+    },
+
     closeEditor() {
       this.isEditorVisible = false;
     }
@@ -66,7 +74,7 @@ export default {
 <template>
   <div class="container mt-4">
     <ul class="list-group d-flex justify-content-center mb-3">
-      <Task v-for="task in tasks" :task="task" @delete="deleteTask" @edit="openEditor">{{ task.title }}</Task>
+      <Task v-for="task in tasks" :task="task" @delete="deleteTask" @edit="openEditor" @setDone="setDone">{{ task.title }}</Task>
     </ul>
 
     <NewTask @newTask="addTask"></NewTask>

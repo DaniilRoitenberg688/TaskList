@@ -3,5 +3,7 @@ frontend/.idea
 frontend/.vscode
 backend/.idea
 backend/.venv
-backend/instance
-backend/.flaskenv
+backend/test.db
+backend/__pycache__
+backend/venv
+backend/test.db

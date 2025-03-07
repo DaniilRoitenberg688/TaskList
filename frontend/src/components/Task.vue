@@ -8,6 +8,10 @@ export default {
     },
     editTask() {
       this.$emit('edit', this.task)
+    },
+
+    setDone() {
+      this.$emit('setDone', this.task)
     }
   }
 }
@@ -16,7 +20,7 @@ export default {
 <template>
   <li class="list-group-item d-flex" :class="{'list-group-item-success': task.is_done}">
     <div class="d-inline-block">
-      <input class="me-2" type="checkbox" v-model="task.is_done"/>
+      <input class="me-2" type="checkbox" v-model="task.is_done" @change="setDone"/>
       {{ task.title }}
     </div>
     <div class="d-inline-block position-absolute end-0 top-50 translate-middle-y me-3">

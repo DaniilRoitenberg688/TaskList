@@ -1,81 +1,92 @@
-from flask import Flask, request, jsonify, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import SQLModel, Field, Session, create_engine, select
+from pydantic import BaseModel
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
-db = SQLAlchemy(app)
-Migrate(app, db)
+from typing import Annotated
 
-app.config['DEBUG'] = True
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
 
-# модель для хранения задачи
-class Task(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100), nullable=False)
-    is_done = db.Column(db.Boolean, nullable=False, default=False)
+from sqlalchemy.orm import sessionmaker
 
-# презентер для задачи
-def present_task(task):
-    return {
-        "id": task.id,
-        "title": task.title,
-        "is_done": task.is_done
-    }
 
-# получаем все задачи
-@app.route('/api/tasks', methods=['GET'])
-def get_tasks():
-    tasks = Task.query.all()
-    print([present_task(task) for task in tasks])
-    return [present_task(task) for task in tasks], 200, {'Access-Control-Allow-Origin': '*'}
+app = FastAPI()
 
-# добавляем новую задачу
-@app.route('/api/tasks', methods=['POST'])
-def add_task():
-    data = request.get_json()
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://0.0.0.0:8080",
+]
 
-    # если нет названия - возвращаем ошибку
-    if not data.get('title'):
-        return jsonify({'error': 'no title'}), 400
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    task = Task(title=data['title'])
-    db.session.add(task)
-    db.session.commit()
+database_rul = 'sqlite+aiosqlite:///test.db'
 
-    return jsonify(present_task(task))
 
-@app.route('/api/tasks/<id:int>', methods=['DELETE'])
-def delete_task(id):
-    task = db.session.get(Task, id)
+engine = create_async_engine(database_rul)
+
+async def get_session() -> AsyncSession:
+    async_session = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with async_session() as session:
+        yield session
+
+
+sess_dep = Annotated[AsyncSession, Depends(get_session)]
+
+class Task(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+    title: str
+    is_done: bool = Field(default=False)
+
+
+class CreateTask(BaseModel):
+    title: str
+
+class EditTask(BaseModel):
+    title: str
+    is_done: bool
+
+@app.get('/api/tasks')
+async def get_all_tasks(session: sess_dep) -> list[Task]:
+    all_tasks = await session.exec(select(Task))
+    all_tasks = all_tasks.all()
+    return all_tasks
+
+
+@app.post('/api/tasks', status_code=201)
+async def create_task(session: sess_dep, task: CreateTask) -> Task:
+    new_task = Task()
+    new_task.title = task.title
+    session.add(new_task)
+    await session.commit()
+    return new_task
+
+@app.delete('/api/tasks/{id}', status_code=204)
+async def delete(session: sess_dep, id: int):
+    to_delete = await session.get(Task, id)
+    if not to_delete:
+        raise HTTPException(404, detail='not found')
+    await session.delete(to_delete)
+    await session.commit()
+
+
+@app.put('/api/tasks/{id}')
+async def put_task(session: sess_dep, data: EditTask, id: int) -> Task:
+    task = await session.get(Task, id)
     if not task:
-        return jsonify({'error': 'can not find task'}), 404
-
-    db.session.delete(task)
-    db.session.commit()
-    return jsonify({'status': 'OK'}), 200
-
-
-@app.route('/api/tasks', methods=['PATCH'])
-def edit_task():
-    data: dict = request.get_json()
-    if not data:
-        return jsonify({'error': 'no task'}), 400
-
-    if not data.get('title'):
-        return jsonify({'error': 'no title'}), 400
-
-    task: Task = db.session.get(Task, int(data.get('id')))
-    if not task:
-        return jsonify({'error': 'can not find task'}), 404
-
-    task.title = data.get('title')
-    db.session.commit()
-    return jsonify({'status': 'OK'}), 200
-
-
-
-
-
-if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+        raise HTTPException(404, detail='not found')
+    task.title = data.title
+    task.is_done = data.is_done
+    await session.commit()
+    return task
+    
